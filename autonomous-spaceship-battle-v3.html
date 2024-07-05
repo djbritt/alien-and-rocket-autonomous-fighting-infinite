@@ -1,0 +1,495 @@
+<html><head><base href="https://websim.ai/">
+<title>AI Spaceship Battle - User Control with Mouse and Timer</title>
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    background: black;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+  }
+  .ship {
+    position: absolute;
+    font-size: 24px;
+    color: white;
+    user-select: none;
+    z-index: 2;
+    transition: transform 0.2s ease-in-out;
+  }
+  .laser {
+    position: absolute;
+    width: 10px;
+    height: 3px;
+    user-select: none;
+    z-index: 2;
+  }
+  #gameOver {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 48px;
+    color: red;
+    display: none;
+    z-index: 3;
+    text-align: center;
+  }
+  #winner {
+    font-size: 36px;
+    color: gold;
+    margin-top: 20px;
+  }
+  .star {
+    position: absolute;
+    background-color: white;
+    border-radius: 50%;
+    z-index: 1;
+  }
+  .shooting-star {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background-color: white;
+    border-radius: 50%;
+    z-index: 1;
+    box-shadow: 0 0 10px 2px white;
+  }
+  .shooting-star::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    right: 4px;
+    height: 2px;
+    background: linear-gradient(to left, rgba(255, 255, 255, 0), white);
+    width: 50px;
+  }
+  #controlMode {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 10px;
+    border-radius: 5px;
+    z-index: 4;
+    opacity: 0.7;
+  }
+  button {
+    background: transparent;
+    border: none;
+    color: white;
+    padding: 5px 10px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 2px;
+    cursor: pointer;
+  }
+  #timer {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    z-index: 4;
+  }
+  #colorPalette {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 10px;
+    border-radius: 5px;
+    z-index: 4;
+  }
+  .colorOption {
+    width: 20px;
+    height: 20px;
+    display: inline-block;
+    margin: 2px;
+    cursor: pointer;
+    border: 1px solid white;
+  }
+</style>
+</head>
+<body>
+<div id="ship1" class="ship">🚀</div>
+<div id="ship2" class="ship">🛸</div>
+<div id="gameOver">
+  GAME OVER
+  <div id="winner"></div>
+</div>
+<div id="controlMode">
+  <button id="toggleControl">User</button>
+</div>
+<div id="timer">0</div>
+
+<div id="colorPalette">
+  <div style="margin-bottom: 10px;">Rocket Colors:</div>
+  <input type="color" id="rocketColorPicker" value="#ff00ff" style="margin-bottom: 10px;">
+  <div style="margin-bottom: 10px;">Alien Colors:</div>
+  <input type="color" id="alienColorPicker" value="#00ff00">
+</div>
+
+<script>
+const ship1 = document.getElementById('ship1');
+const ship2 = document.getElementById('ship2');
+const gameOver = document.getElementById('gameOver');
+const winner = document.getElementById('winner');
+const toggleControlBtn = document.getElementById('toggleControl');
+const timerDiv = document.getElementById('timer');
+const rocketColorPicker = document.getElementById('rocketColorPicker');
+const alienColorPicker = document.getElementById('alienColorPicker');
+
+let ship1X = 50, ship1Y = 50;
+let ship2X = window.innerWidth - 50, ship2Y = window.innerHeight - 50;
+let ship1Dx = 0, ship1Dy = 0;
+let ship2Dx = -2, ship2Dy = -2;
+let isGameOver = false;
+let isUserControl = false;
+let lasers = [];
+let timer = 0;
+let timerInterval;
+let gameOverLaser = null;
+let currentRocketLaserColor = '#ff00ff';
+let currentAlienLaserColor = '#00ff00';
+
+const SHIP_SIZE = 24;
+const BASE_SPEED = 3;
+
+function moveShip(ship, x, y, angle) {
+  ship.style.left = x + 'px';
+  ship.style.top = y + 'px';
+  ship.style.transform = `rotate(${angle}rad)`;
+}
+
+function createLaser(x, y, dx, dy, shipId) {
+  const laser = document.createElement('div');
+  laser.className = 'laser';
+  laser.style.left = x + 'px';
+  laser.style.top = y + 'px';
+
+  laser.style.backgroundColor = shipId === 1 ? currentRocketLaserColor : currentAlienLaserColor;
+
+  const angle = Math.atan2(dy, dx);
+  laser.style.transform = `rotate(${angle}rad)`;
+
+  document.body.appendChild(laser);
+
+  const newLaser = { element: laser, x, y, dx, dy, shipId };
+  lasers.push(newLaser);
+  return newLaser;
+}
+
+rocketColorPicker.addEventListener('input', (e) => {
+  currentRocketLaserColor = e.target.value;
+});
+
+alienColorPicker.addEventListener('input', (e) => {
+  currentAlienLaserColor = e.target.value;
+});
+
+function animateHit(laser, isGameOver) {
+  laser.element.style.width = "20px";
+  laser.element.style.height = "10px";
+  if (!isGameOver) {
+    setTimeout(() => {
+      laser.element.remove();
+    }, 200);
+  } else {
+    gameOverLaser = laser;
+  }
+}
+
+function moveLasers() {
+  lasers = lasers.filter(laser => {
+    laser.x += laser.dx * 5;
+    laser.y += laser.dy * 5;
+    laser.element.style.left = laser.x + 'px';
+    laser.element.style.top = laser.y + 'px';
+
+    if (!isGameOver && (laser.x < 0 || laser.x > window.innerWidth || laser.y < 0 || laser.y > window.innerHeight)) {
+      laser.element.remove();
+      return false;
+    }
+
+    if (laser.shipId === 1 && checkCollision(laser.x, ship2X, laser.y, ship2Y)) {
+      animateHit(laser, true);
+      gameOverSequence(1);
+      return false;
+    } else if (laser.shipId === 2 && checkCollision(laser.x, ship1X, laser.y, ship1Y)) {
+      animateHit(laser, true);
+      gameOverSequence(2);
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function checkCollision(x1, x2, y1, y2) {
+  const distance = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+  return distance < SHIP_SIZE;
+}
+
+function gameOverSequence(winningShip) {
+  if (!isGameOver) {
+    isGameOver = true;
+    clearInterval(timerInterval);
+    gameOver.style.display = 'block';
+    winner.textContent = winningShip === 1 ? "🚀 Rocket Wins!" : "🛸 Alien Wins!";
+    setTimeout(() => {
+      gameOver.style.display = 'none';
+      winner.textContent = '';
+      resetGame();
+    }, 3000);
+  }
+}
+
+function resetGame() {
+  if (gameOverLaser) {
+    gameOverLaser.element.remove();
+    gameOverLaser = null;
+  }
+  ship1X = Math.random() * (window.innerWidth - SHIP_SIZE);
+  ship1Y = Math.random() * (window.innerHeight - SHIP_SIZE);
+  ship2X = Math.random() * (window.innerWidth - SHIP_SIZE);
+  ship2Y = Math.random() * (window.innerHeight - SHIP_SIZE);
+  ship1Dx = 0;
+  ship1Dy = 0;
+  ship2Dx = (Math.random() - 0.5) * 4;
+  ship2Dy = (Math.random() - 0.5) * 4;
+  isGameOver = false;
+  lasers.forEach(laser => laser.element.remove());
+  lasers = [];
+  if (isUserControl) {
+    startTimer();
+  }
+  timer = 0;
+  timerDiv.textContent = timer;
+}
+
+function createStar() {
+  const star = document.createElement('div');
+  star.className = 'star';
+  star.style.left = Math.random() * window.innerWidth + 'px';
+  star.style.top = Math.random() * window.innerHeight + 'px';
+  const size = Math.random() * 2 + 1;
+  star.style.width = size + 'px';
+  star.style.height = size + 'px';
+  star.style.opacity = Math.random() * 0.5 + 0.5;
+  document.body.appendChild(star);
+
+  setTimeout(() => {
+    star.remove();
+  }, Math.random() * 5000 + 5000);
+}
+
+function addStars() {
+  if (Math.random() < 0.1) {
+    createStar();
+  }
+}
+
+function createShootingStar() {
+  const shootingStar = document.createElement('div');
+  shootingStar.className = 'shooting-star';
+
+  const startX = Math.random() < 0.5 ? -50 : window.innerWidth + 50;
+  const startY = Math.random() * window.innerHeight;
+
+  const endX = startX < 0 ? window.innerWidth + 50 : -50;
+  const endY = Math.random() * window.innerHeight;
+
+  shootingStar.style.left = startX + 'px';
+  shootingStar.style.top = startY + 'px';
+
+  document.body.appendChild(shootingStar);
+
+  const angle = Math.atan2(endY - startY, endX - startX);
+  shootingStar.style.transform = `rotate(${angle}rad)`;
+
+  const distance = Math.sqrt((endX - startX)**2 + (endY - startY)**2);
+  const duration = distance / 500; // Adjust speed as needed
+
+  shootingStar.animate([
+    { left: startX + 'px', top: startY + 'px' },
+    { left: endX + 'px', top: endY + 'px' }
+  ], {
+    duration: duration * 1000,
+    easing: 'linear'
+  }).onfinish = () => {
+    shootingStar.remove();
+  };
+}
+
+function addShootingStar() {
+  if (Math.random() < 0.01) {
+    createShootingStar();
+  }
+}
+
+function updateShipDirection(shipX, shipY, shipDx, shipDy, enemyX, enemyY) {
+  const nearbyLasers = lasers.filter(laser =>
+    laser.shipId !== (shipX === ship1X ? 1 : 2) &&
+    Math.abs(laser.x - shipX) < 100 &&
+    Math.abs(laser.y - shipY) < 100
+  );
+
+  if (nearbyLasers.length > 0) {
+    // Evasive maneuver
+    const closestLaser = nearbyLasers.reduce((closest, laser) => {
+      const distance = Math.sqrt((laser.x - shipX)**2 + (laser.y - shipY)**2);
+      return distance < closest.distance ? {laser, distance} : closest;
+    }, {laser: null, distance: Infinity}).laser;
+
+    if (closestLaser) {
+      const evadeAngle = Math.atan2(shipY - closestLaser.y, shipX - closestLaser.x);
+      return {
+        dx: Math.cos(evadeAngle) * BASE_SPEED,
+        dy: Math.sin(evadeAngle) * BASE_SPEED,
+        angle: evadeAngle
+      };
+    }
+  }
+
+  // Normal movement
+  if (Math.random() < 0.02) {
+    const targetAngle = Math.atan2(enemyY - shipY, enemyX - shipX);
+    const randomOffset = (Math.random() - 0.5) * Math.PI / 2;
+    const angle = targetAngle + randomOffset;
+    return {
+      dx: Math.cos(angle) * BASE_SPEED,
+      dy: Math.sin(angle) * BASE_SPEED,
+      angle: angle
+    };
+  }
+  return { dx: shipDx, dy: shipDy, angle: Math.atan2(shipDy, shipDx) };
+}
+
+function keepShipInBounds(x, y, dx, dy) {
+  let newX = x;
+  let newY = y;
+  let newDx = dx;
+  let newDy = dy;
+
+  if (x < SHIP_SIZE / 2) {
+    newX = SHIP_SIZE / 2;
+    newDx = Math.abs(dx); // Reverse direction if hitting left edge
+  } else if (x > window.innerWidth - SHIP_SIZE / 2) {
+    newX = window.innerWidth - SHIP_SIZE / 2;
+    newDx = -Math.abs(dx); // Reverse direction if hitting right edge
+  }
+
+  if (y < SHIP_SIZE / 2) {
+    newY = SHIP_SIZE / 2;
+    newDy = Math.abs(dy); // Reverse direction if hitting top edge
+  } else if (y > window.innerHeight - SHIP_SIZE / 2) {
+    newY = window.innerHeight - SHIP_SIZE / 2;
+    newDy = -Math.abs(dy); // Reverse direction if hitting bottom edge
+  }
+
+  return { x: newX, y: newY, dx: newDx, dy: newDy };
+}
+
+function gameLoop() {
+  if (!isGameOver) {
+    if (!isUserControl) {
+      const ship1Update = updateShipDirection(ship1X, ship1Y, ship1Dx, ship1Dy, ship2X, ship2Y);
+      ship1Dx = ship1Update.dx;
+      ship1Dy = ship1Update.dy;
+    }
+    const ship2Update = updateShipDirection(ship2X, ship2Y, ship2Dx, ship2Dy, ship1X, ship1Y);
+
+    ship2Dx = ship2Update.dx;
+    ship2Dy = ship2Update.dy;
+
+    ship1X += ship1Dx;
+    ship1Y += ship1Dy;
+    ship2X += ship2Dx;
+    ship2Y += ship2Dy;
+
+    const ship1Pos = keepShipInBounds(ship1X, ship1Y, ship1Dx, ship1Dy);
+    const ship2Pos = keepShipInBounds(ship2X, ship2Y, ship2Dx, ship2Dy);
+
+    ship1X = ship1Pos.x;
+    ship1Y = ship1Pos.y;
+    ship1Dx = ship1Pos.dx;
+    ship1Dy = ship1Pos.dy;
+
+    ship2X = ship2Pos.x;
+    ship2Y = ship2Pos.y;
+    ship2Dx = ship2Pos.dx;
+    ship2Dy = ship2Pos.dy;
+
+    moveShip(ship1, ship1X, ship1Y, isUserControl ? 0 : ship1Pos.angle);
+    moveShip(ship2, ship2X, ship2Y, ship2Update.angle);
+
+    if (Math.random() < 0.02) {
+      const dx = ship2X - ship1X;
+      const dy = ship2Y - ship1Y;
+      const mag = Math.sqrt(dx * dx + dy * dy);
+      createLaser(ship1X, ship1Y, dx / mag, dy / mag, 1);
+    }
+
+    if (Math.random() < 0.02) {
+      const dx = ship1X - ship2X;
+      const dy = ship1Y - ship2Y;
+      const mag = Math.sqrt(dx * dx + dy * dy);
+      createLaser(ship2X, ship2Y, dx / mag, dy / mag, 2);
+    }
+
+    moveLasers();
+  }
+
+  addStars();
+  addShootingStar();
+
+  requestAnimationFrame(gameLoop);
+}
+
+// User control
+toggleControlBtn.addEventListener('click', () => {
+  isUserControl = !isUserControl;
+  toggleControlBtn.textContent = isUserControl ? 'User' : 'AI';
+
+  if (isUserControl) {
+    ship1Dx = 0;
+    ship1Dy = 0;
+    timer = 0;
+    startTimer();
+    window.addEventListener('mousemove', moveShipWithMouse);
+    window.removeEventListener('keydown', controlShip);
+  } else {
+    clearInterval(timerInterval);
+    window.removeEventListener('mousemove', moveShipWithMouse);
+    window.addEventListener('keydown', controlShip);
+  }
+});
+
+function startTimer() {
+  timerInterval = setInterval(() => {
+    if (!isGameOver) {
+      timer += 1;
+      timerDiv.textContent = timer;
+    }
+  }, 1000);
+}
+
+function moveShipWithMouse(event) {
+  ship1X = event.clientX;
+  ship1Y = Math.min(event.clientY, window.innerHeight - SHIP_SIZE / 2);
+  moveShip(ship1, ship1X, ship1Y, 0);
+}
+
+// Initialize stars
+for (let i = 0; i < 50; i++) {
+  createStar();
+}
+
+gameLoop();
+</script>
+</body></html>
